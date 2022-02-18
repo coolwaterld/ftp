@@ -3,7 +3,7 @@ import io
 import shutil
 from fastapi import FastAPI, File, UploadFile, Response
 from fastapi.responses import FileResponse
-from typing import List
+from typing import List, Dict
 from configparser import ConfigParser, ExtendedInterpolation, ConfigParser
 
 from models import FileData, FileDataIn, FileDataOut
@@ -15,6 +15,7 @@ import logging
 app = FastAPI()
 artifacts_path = ''
 db: List[FileData] = []
+
 responses = {
     404: {"description": "Item not found"},
     500: {"description": "My bad"}
@@ -42,7 +43,7 @@ def handle_new_file(file: UploadFile):
         file_data = FileData(name=file.filename, path=generate_artifact_path(file.filename))
         save_artifact(file_data, file)
         file_data.size = os.path.getsize(file_data.path)
-        db.append(file_data)
+        #db.append(file_data)
         return file_data
     except Exception as ex:
         logging.error(f'(!) an exception occurred: {ex.args}')
@@ -90,11 +91,11 @@ def zip_files(files_data: List[FileData]):
 
     return resp
 
-
+'''
 @app.get("/")
 async def root():
     return True
-
+'''
 
 @app.get("/list")
 async def get_all_files():
@@ -107,8 +108,8 @@ async def get_all_files():
         files.append(FileDataOut(name=data.name, size=data.size))
     return files
 
-
-@app.get("/files", response_class=FileResponse)
+'''
+@app.post("/files", response_class=FileResponse)
 async def get_file(files_data: List[FileDataIn]):
     """
     gets a list of files names, if the file exists in the server then it will be added to a zip archive, else it would
@@ -127,9 +128,9 @@ async def get_file(files_data: List[FileDataIn]):
         return zip_files(files)
     except Exception as ex:
         logging.error(f'(!) an exception occurred: {ex.args}')
+'''
 
-
-@app.get("/file")
+@app.post("/file")
 async def get_file(file_data: FileDataIn, response: Response):
     """
     gets a files name, if the file exists in the server then it will be sent back as response,
@@ -160,8 +161,27 @@ async def create_upload_files(files: List[UploadFile] = File(...)):
     files_data: List[FileData] = []
     for file in files:
         file_data = handle_new_file(file)
+        is_exist, data = is_file_exist(file_data.name)
+        if not is_exist:
+            db.append(file_data)
         files_data.append(file_data)
     return files_data
+
+@app.delete("/file")
+async def del_file(file_data: FileDataIn):
+    is_exist, data = is_file_exist(file_data.name)
+    if not is_exist:
+        return {"status":False,"info":file_data.name+" does not exist"}
+    else:
+        if os.path.exists(data.path):
+            os.remove(data.path)
+            logging.debug("delete "+ data.path)
+            db.remove(data)
+            return {"status":True}
+        else:
+            return {"status":False,"info":file_data.name+" does not exist"}
+
+
 
 
 def create_artifacts_directory():
